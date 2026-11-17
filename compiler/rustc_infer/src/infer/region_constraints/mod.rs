@@ -384,7 +384,11 @@ pub(crate) enum UndoLog<'tcx> {
     OverwriteSolverRegionConstraint { old_constraint: Box<SolverRegionConstraint<'tcx>> },
 
     /// We added the given leaf solver constraint.
-    AddSolverLeafRegionConstraint { index: usize, is_duplicate: bool },
+    AddSolverLeafRegionConstraint {
+        index: usize,
+        is_duplicate: bool,
+        visible_for_leak_check: ty::VisibleForLeakCheck,
+    },
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -506,7 +510,11 @@ impl<'tcx> RegionConstraintCollector<'_, 'tcx> {
             .push(OverwriteSolverRegionConstraint { old_constraint: Box::new(old_constraint) });
     }
 
-    pub fn register_solver_constraint(&mut self, constraint: SolverRegionConstraint<'tcx>) {
+    pub fn register_solver_constraint(
+        &mut self,
+        constraint: SolverRegionConstraint<'tcx>,
+        vis: ty::VisibleForLeakCheck,
+    ) {
         assert!(
             !constraint.has_escaping_bound_vars(),
             "solver region constraint has escaping bound vars, which is indicative of a bug in how constraints are handled: {constraint:?}",
@@ -521,6 +529,7 @@ impl<'tcx> RegionConstraintCollector<'_, 'tcx> {
                     self.undo_log.push(AddSolverLeafRegionConstraint {
                         index,
                         is_duplicate: is_duplicate == IsDuplicate::Yes,
+                        visible_for_leak_check: vis,
                     });
                 }
             }
@@ -883,7 +892,7 @@ impl<'tcx> RegionConstraintCollector<'_, 'tcx> {
     /// See `InferCtxt::region_constraints_added_in_snapshot`.
     pub fn region_constraints_added_in_snapshot(&self, mark: &Snapshot<'tcx>) -> bool {
         self.undo_log
-            .region_constraints_in_snapshot(mark)
+            .region_constraints_in_snapshot(Some(mark))
             .any(|elt| matches!(elt, &AddConstraint(_)))
     }
 
@@ -994,7 +1003,7 @@ impl<'tcx> Rollback<UndoLog<'tcx>> for RegionConstraintStorage<'tcx> {
             OverwriteSolverRegionConstraint { old_constraint } => {
                 self.solver_data.overwrite(*old_constraint);
             }
-            AddSolverLeafRegionConstraint { index, is_duplicate } => {
+            AddSolverLeafRegionConstraint { index, is_duplicate, visible_for_leak_check: _ } => {
                 if !is_duplicate {
                     self.solver_data.pop_leaf_constraint().unwrap();
                     assert_eq!(self.solver_data.leafs().len(), index);
