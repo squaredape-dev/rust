@@ -162,7 +162,9 @@ impl fmt::Display for AllocError {
 ///
 /// Note that some allocators may choose not to reclaim memory blocks in certain situations.
 /// In such cases, the allocator may document that ownership remains with the consumer,
-/// and the memory block is not invalidated.
+/// and the memory block is not invalidated. For example, the `Global`
+/// allocator has no destructor; its allocations remain valid even after the
+/// allocator itself (the `Global` value) goes out of scope.
 ///
 /// #### Collections
 ///
