@@ -102,7 +102,7 @@ fn main() {
         return
     }
 
-    // First, make sure reads/writes without stdio work if stdio itself is
+    // First, make sure reads/writes without stdio error if stdio itself is
     // missing.
     let (a, b, c) = unsafe {
         without_stdio(|| {
@@ -114,9 +114,9 @@ fn main() {
         })
     };
 
-    assert_eq!(a.unwrap(), 5);
-    assert_eq!(b.unwrap(), 5);
-    assert_eq!(c.unwrap(), 0);
+    assert!(a.is_err());
+    assert!(b.is_err());
+    assert!(c.is_err());
 
     // Second, spawn a child and do some work with "null" descriptors to make
     // sure it's ok
