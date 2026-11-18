@@ -346,7 +346,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks + 
             }
 
             if !output_types.needs_codegen() {
-                let _metadata = rustc_metadata::fs::encode_and_write_metadata(tcx);
+                // We have already emitted metadata earlier.
                 return None;
             }
 
