@@ -386,9 +386,18 @@ impl<'tcx> MiniGraph<'tcx> {
         only_consider_snapshot: Option<&CombinedSnapshot<'tcx>>,
         mut each_edge: impl FnMut(ty::Region<'tcx>, ty::Region<'tcx>),
     ) {
+        if rustc_middle::ty::tls::with(|tcx| tcx.assumptions_on_binders()) {
+            Self::iterate_solver_region_constraints(
+                region_constraints,
+                only_consider_snapshot,
+                each_edge,
+            );
+            return;
+        }
         if let Some(snapshot) = only_consider_snapshot {
-            for undo_entry in
-                region_constraints.undo_log.region_constraints_in_snapshot(&snapshot.undo_snapshot)
+            for undo_entry in region_constraints
+                .undo_log
+                .region_constraints_in_snapshot(Some(&snapshot.undo_snapshot))
             {
                 match undo_entry {
                     &AddConstraint(i) => {
@@ -408,8 +417,10 @@ impl<'tcx> MiniGraph<'tcx> {
                         "we never add verifications while doing higher-ranked things",
                     ),
                     &AddCombination(..) | &AddVar(..) => {}
-                    // FIXME(-Zassumptions-on-binders): we probably need to handle this in some manner
-                    &OverwriteSolverRegionConstraint { .. } => {}
+                    &OverwriteSolverRegionConstraint { .. }
+                    | &AddSolverLeafRegionConstraint { .. } => {
+                        unreachable!()
+                    }
                 }
             }
         } else {
@@ -425,6 +436,50 @@ impl<'tcx> MiniGraph<'tcx> {
                         ty::VisibleForLeakCheck::Unreachable => unreachable!(),
                     }
                 })
+        }
+    }
+
+    fn iterate_solver_region_constraints(
+        region_constraints: &RegionConstraintCollector<'_, 'tcx>,
+        only_consider_snapshot: Option<&CombinedSnapshot<'tcx>>,
+        mut each_edge: impl FnMut(ty::Region<'tcx>, ty::Region<'tcx>),
+    ) {
+        let mut handle_leaf = |leaf: &SolverLeafRegionConstraint<'tcx>,
+                               vis: ty::VisibleForLeakCheck| {
+            if let SolverLeafRegionConstraint::RegionOutlives(sup, sub) = *leaf {
+                match vis {
+                    ty::VisibleForLeakCheck::Yes => each_edge(sub, sup),
+                    ty::VisibleForLeakCheck::No => {}
+                    ty::VisibleForLeakCheck::Unreachable => unreachable!(),
+                }
+            }
+        };
+        let snapshot = only_consider_snapshot.map(|s| &s.undo_snapshot);
+        // We need to rollback overwrites to get the correct leaf entries.
+        // FIXME: we can avoid the clone if the or constraint is empty.
+        let mut solver_constraint = region_constraints.solver_data().clone();
+        for undo_entry in region_constraints.undo_log.region_constraints_in_snapshot(snapshot).rev()
+        {
+            match undo_entry {
+                &AddConstraint(_) | &AddVerify(_) => {
+                    bug!("We use the old region constraint when assumptions_on_binders is on")
+                }
+
+                &AddCombination(..) | &AddVar(..) => {}
+                OverwriteSolverRegionConstraint { old_constraint } => {
+                    solver_constraint.overwrite(*old_constraint.clone());
+                }
+                &AddSolverLeafRegionConstraint {
+                    index,
+                    is_duplicate: _,
+                    visible_for_leak_check,
+                } => {
+                    // The constraint is registered in this snapshot window, so we need to
+                    // account for it. Whether it's a duplicate in the underlying storage
+                    // is irrelevant.
+                    handle_leaf(&solver_constraint.leafs()[index].0, visible_for_leak_check);
+                }
+            }
         }
     }
 
