@@ -502,6 +502,7 @@ impl OutputTypes {
         self.0.keys().any(|k| match *k {
             OutputType::Validation
             | OutputType::DepInfo
+            | OutputType::Metadata
             | OutputType::FullAnalysis => false,
             OutputType::Exe
             | OutputType::Bitcode
@@ -509,10 +510,7 @@ impl OutputTypes {
             | OutputType::Assembly
             | OutputType::ThinLinkBitcode
             | OutputType::LlvmAssembly
-            | OutputType::Mir
-            // FIXME: Metadata does not technically need it,
-            // this is just to keep behaviour
-            | OutputType::Metadata => true,
+            | OutputType::Mir => true,
         })
     }
 

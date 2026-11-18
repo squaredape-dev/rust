@@ -324,7 +324,6 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks + 
             }
 
             rustc_interface::passes::full_analysis(tcx);
-            rustc_interface::passes::full_analysis(tcx);
 
             if callbacks.after_analysis(compiler, tcx) == Compilation::Stop {
                 return None;
